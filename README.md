@@ -62,6 +62,8 @@ npm start
 
 Open `http://localhost:4200` and paste the same `APP_API_TOKEN` into the connection screen. Data is stored locally under `data\`; do not commit it.
 
+The assistant reports **source-only mode** when the backend has no `OPENAI_API_KEY`. In that mode it can retrieve matching passages and show citations but does not generate an AI summary. Put a valid key in the root `.env` and restart FastAPI to enable summaries. Do not commit or share the key.
+
 To record a real browser walkthrough after starting both apps, run `npm run test:demo` from `frontend\`. The script requires Microsoft Edge and uses the running API to register the fictional sample washer, upload its sample text manual, and ask a cited question. It writes the video under the ignored `demo-output\` directory and a preview to `docs\demo-screenshot.png`. The sample manual is not advice for a real appliance.
 
 ## Docker
