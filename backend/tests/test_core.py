@@ -79,3 +79,20 @@ def test_answers_reject_low_relevance_chunks_and_cite_the_matching_passage(monke
     assert len(citations) == 1
     assert citations[0].page_number == 2
     assert "Error 4C" in citations[0].excerpt
+
+
+def test_health_reports_whether_answer_generation_is_configured(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend.app.main import app
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with TestClient(app) as client:
+        assert client.get("/api/health").json() == {
+            "status": "ok",
+            "generation_available": False,
+        }
+
+    monkeypatch.setenv("OPENAI_API_KEY", "local-test-key")
+    with TestClient(app) as client:
+        assert client.get("/api/health").json()["generation_available"] is True

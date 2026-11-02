@@ -68,8 +68,11 @@ def document_output(document: Document) -> DocumentOut:
 
 
 @router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, str | bool]:
+    return {
+        "status": "ok",
+        "generation_available": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+    }
 
 
 @router.post("/products", response_model=ProductOut, status_code=201)
