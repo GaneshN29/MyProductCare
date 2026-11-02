@@ -1,0 +1,17 @@
+MYPRODUCTCARE SAMPLE WASHER
+Fictional example manual for local demonstration only
+
+SAFETY
+Disconnect the washer from power before routine cleaning. Do not remove covers or attempt electrical repairs. Contact an authorized service professional for electrical faults or repeated error codes.
+
+SPECIFICATIONS
+The fictional sample washer has a maximum load capacity of 8 kg. Use the capacity listed on the rating label for a real appliance.
+
+TROUBLESHOOTING
+Error 4C indicates that the washer did not detect an adequate water supply during the fill cycle. Check that the household water tap is open and the inlet hose is not visibly kinked. If the code remains, stop the cycle and contact authorized service. Do not disassemble the appliance.
+
+MAINTENANCE
+Clean the detergent drawer with warm water when residue builds up. Before cleaning the exterior, disconnect power and use a soft damp cloth. Do not use abrasive cleaners.
+
+WARRANTY
+This fictional sample document does not describe a real manufacturer's warranty. Refer to the warranty document supplied with your actual product for coverage, duration, exclusions, and claim requirements.

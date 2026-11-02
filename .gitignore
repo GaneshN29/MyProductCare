@@ -1,0 +1,14 @@
+.env
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.streamlit/
+node_modules/
+frontend/dist/
+frontend/.angular/
+data/
+demo-output/
+*.py[cod]
+*.db
+*.sqlite3

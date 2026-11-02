@@ -1,0 +1,25 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    environment:
+      APP_API_TOKEN: ${APP_API_TOKEN:?Set APP_API_TOKEN in your environment}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MYPRODUCTCARE_DATA_DIR: /app/data
+    ports:
+      - "8000:8000"
+    volumes:
+      - productcare-data:/app/data
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+volumes:
+  productcare-data:

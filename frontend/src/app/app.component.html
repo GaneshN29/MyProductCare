@@ -1,0 +1,193 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="brand-lockup" href="#" (click)="open('overview'); $event.preventDefault()">
+      <span class="brand-mark">m</span>
+      <span>myproduct<span class="brand-light">care</span></span>
+    </a>
+
+    <div class="workspace-label">WORKSPACE</div>
+    <nav class="main-nav" aria-label="Main navigation">
+      <button [class.active]="view() === 'overview'" (click)="open('overview')">
+        <span class="nav-icon">⌂</span> Overview
+      </button>
+      <button [class.active]="view() === 'products'" (click)="open('products')">
+        <span class="nav-icon">▦</span> My products
+        <span class="nav-count">{{ products().length }}</span>
+      </button>
+      <button [class.active]="view() === 'documents'" (click)="open('documents')">
+        <span class="nav-icon">▤</span> Documents
+      </button>
+      <button [class.active]="view() === 'assistant'" (click)="open('assistant')">
+        <span class="nav-icon">✳</span> AI assistant
+      </button>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="privacy-card">
+        <span class="privacy-icon">◇</span>
+        <strong>Your docs stay yours</strong>
+        <p>Product data is isolated to the API token you provide.</p>
+      </div>
+      <div class="profile-row">
+        <span class="profile-avatar">M</span>
+        <span class="profile-copy"><strong>My workspace</strong><small>Personal library</small></span>
+        <span class="profile-menu">···</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main-panel">
+    <header class="topbar">
+      <div class="breadcrumb"><span>Workspace</span><span class="crumb-separator">/</span><strong>{{ view() === 'assistant' ? 'AI assistant' : view() === 'documents' ? 'Documents' : view() === 'products' ? 'My products' : 'Overview' }}</strong></div>
+      <div class="topbar-actions">
+        <span class="secure-indicator"><i></i> Private workspace</span>
+        <button class="avatar-button" aria-label="Workspace profile">M</button>
+      </div>
+    </header>
+
+    <div class="content">
+      @if (error()) {
+        <div class="alert-error" role="alert">
+          <span>{{ error() }}</span>
+          <button aria-label="Dismiss error" (click)="error.set('')">×</button>
+        </div>
+      }
+
+      @if (connectionConfigured()) {
+        <section class="setup-card">
+          <div class="eyebrow"><span class="eyebrow-dot"></span> ONE-TIME SETUP</div>
+          <h1>Connect to your product library</h1>
+          <p>Connect your Angular app to the MyProductCare API. Your bearer token stays in this browser.</p>
+          <label for="api-url">API base URL</label>
+          <input id="api-url" [ngModel]="apiUrl()" (ngModelChange)="apiUrl.set($event)" placeholder="http://localhost:8000">
+          <label for="api-token">API bearer token</label>
+          <input id="api-token" type="password" [ngModel]="apiToken()" (ngModelChange)="apiToken.set($event)" placeholder="Paste your APP_API_TOKEN">
+          <button class="button button-primary full-button" (click)="saveConnection()">Connect workspace <span>→</span></button>
+          <small>Start the FastAPI backend and set APP_API_TOKEN before connecting.</small>
+        </section>
+      } @else {
+        @if (view() === 'overview') {
+          <section class="welcome-row">
+            <div>
+              <div class="eyebrow"><span class="eyebrow-dot"></span> YOUR PERSONAL PRODUCT LIBRARY</div>
+              <h1>Everything you own,<br><span>understood.</span></h1>
+              <p class="welcome-copy">Bring your product manuals and warranties together. Get clear, source-backed answers whenever you need them.</p>
+              <div class="welcome-actions">
+                <button class="button button-primary" (click)="open('products')">Explore my products <span>→</span></button>
+                <button class="button button-secondary" (click)="open('assistant')">Ask a question <span>✳</span></button>
+              </div>
+            </div>
+            <div class="hero-art" aria-label="Product document assistant illustration">
+              <div class="art-glow"></div>
+              <div class="art-sheet sheet-back"></div>
+              <div class="art-sheet sheet-front">
+                <div class="art-sheet-head"><span class="art-file-icon">PDF</span><span class="art-dots">···</span></div>
+                <strong>Your product<br>manual</strong>
+                <div class="art-line wide"></div><div class="art-line"></div><div class="art-line short"></div>
+                <div class="art-highlight"><span>✳</span> Ready to answer</div>
+              </div>
+              <div class="art-chat"><span>✳</span><div><i></i><i></i></div></div>
+              <div class="art-orbit orbit-one"></div><div class="art-orbit orbit-two"></div>
+              <span class="art-spark spark-one">✳</span><span class="art-spark spark-two">✦</span>
+            </div>
+          </section>
+
+          <section class="stats-grid">
+            <article class="stat-card"><span class="stat-icon mint">▦</span><div class="stat-value">{{ products().length }}</div><div class="stat-label">{{ productCountLabel() }}</div></article>
+            <article class="stat-card"><span class="stat-icon lavender">▤</span><div class="stat-value">{{ documents().length }}</div><div class="stat-label">documents in view</div></article>
+            <article class="stat-card"><span class="stat-icon peach">✳</span><div class="stat-value">AI</div><div class="stat-label">grounded answers</div></article>
+          </section>
+
+          <section class="section-block">
+            <div class="section-heading"><div><h2>Your products</h2><p>A little more know-how for everything you own.</p></div><button class="text-button" (click)="open('products')">View all <span>→</span></button></div>
+            @if (products().length === 0) {
+              <div class="empty-card"><span class="empty-icon">▦</span><div><strong>Your product library starts here</strong><p>Add a product, then upload its manual or warranty document.</p></div><button class="button button-primary" (click)="open('products')">Add your first product <span>+</span></button></div>
+            } @else {
+              <div class="product-grid">
+                @for (product of products().slice(0, 3); track product.id) {
+                  <article class="product-card" (click)="selectProduct(product.id); open('documents')">
+                    <div class="product-card-top"><span class="product-symbol">{{ product.category.toLowerCase().includes('wash') ? '◉' : '▧' }}</span><button class="more-button" (click)="deleteProduct(product); $event.stopPropagation()" aria-label="Delete product">···</button></div>
+                    <h3>{{ product.name }}</h3><p class="product-subtitle">{{ product.brand }} <span>·</span> {{ product.model }}</p>
+                    <div class="product-card-foot"><span>{{ product.category }}</span><span class="ready-dot"></span></div>
+                  </article>
+                }
+              </div>
+            }
+          </section>
+
+          <section class="tip-banner"><span class="tip-icon">✳</span><div><strong>Good answers start with good documents.</strong><p>Upload a real product manual and answers can point back to the exact page.</p></div><button class="text-button" (click)="open(products().length ? 'documents' : 'products')">Get started <span>→</span></button></section>
+        }
+
+        @if (view() === 'products') {
+          <section class="page-heading"><div class="eyebrow"><span class="eyebrow-dot"></span> YOUR LIBRARY</div><h1>Products</h1><p>Keep the details and documents for what you own in one place.</p></section>
+          <section class="two-column">
+            <div class="surface-card"><div class="card-title-row"><div><h2>Registered products</h2><p>{{ products().length }} products in your personal library.</p></div><span class="count-pill">{{ products().length }}</span></div>
+              @if (products().length === 0) { <div class="empty-state"><span class="empty-icon">▦</span><strong>No products yet</strong><p>Add your first product using the form.</p></div> }
+              @for (product of products(); track product.id) {
+                <button class="product-list-row" [class.selected]="selectedProductId() === product.id" (click)="selectProduct(product.id)">
+                  <span class="product-symbol">{{ product.category.toLowerCase().includes('wash') ? '◉' : '▧' }}</span>
+                  <span class="product-row-copy"><strong>{{ product.name }}</strong><small>{{ product.brand }} · {{ product.model }}</small></span>
+                  <span class="row-arrow">›</span>
+                </button>
+              }
+            </div>
+            <div class="surface-card"><div class="card-title-row"><div><h2>Add a product</h2><p>Start with the details on your product label.</p></div><span class="form-step">01 / 01</span></div>
+              <form class="product-form" (ngSubmit)="createProduct()">
+                <label>Product name<input [ngModel]="productName()" (ngModelChange)="productName.set($event)" name="name" required placeholder="Washing machine"></label>
+                <div class="form-pair"><label>Brand<input [ngModel]="brand()" (ngModelChange)="brand.set($event)" name="brand" required placeholder="e.g. Bosch"></label><label>Model<input [ngModel]="model()" (ngModelChange)="model.set($event)" name="model" required placeholder="e.g. WGG244"></label></div>
+                <div class="form-pair"><label>Category<input [ngModel]="category()" (ngModelChange)="category.set($event)" name="category" required placeholder="Home appliance"></label><label>Purchase date <span class="optional">(optional)</span><input type="date" [ngModel]="purchaseDate()" (ngModelChange)="purchaseDate.set($event)" name="purchaseDate"></label></div>
+                <label>Description <span class="optional">(optional)</span><textarea rows="3" [ngModel]="description()" (ngModelChange)="description.set($event)" name="description" placeholder="Anything you'd like to remember"></textarea></label>
+                <button class="button button-primary full-button" type="submit" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save product' }} <span>→</span></button>
+              </form>
+            </div>
+          </section>
+        }
+
+        @if (view() === 'documents') {
+          <section class="page-heading"><div class="eyebrow"><span class="eyebrow-dot"></span> DOCUMENT LIBRARY</div><h1>Product documents</h1><p>Add the product knowledge your assistant can cite back to.</p></section>
+          <section class="surface-card document-manager">
+            @if (products().length === 0) {
+              <div class="empty-state"><span class="empty-icon">▤</span><strong>Register a product first</strong><p>Documents need to be attached to a product.</p><button class="button button-primary" (click)="open('products')">Add a product <span>→</span></button></div>
+            } @else {
+              <div class="document-toolbar"><div><h2>Documents</h2><p>Processing uses text extracted from your files.</p></div><select aria-label="Product" [ngModel]="selectedProductId()" (ngModelChange)="selectProduct($event)">@for (product of products(); track product.id) { <option [value]="product.id">{{ product.name }} · {{ product.model }}</option> }</select></div>
+              <form class="upload-panel" (ngSubmit)="uploadDocument()">
+                <div class="upload-icon">↑</div><strong>Add a product document</strong><p>PDF, TXT, or Markdown · up to 20 MB</p>
+                <label class="file-picker">Choose file<input type="file" accept=".pdf,.txt,.md,.markdown" (change)="onFileSelected($event)"></label>
+                @if (selectedFile()) { <span class="selected-file">{{ selectedFile()?.name }}</span> }
+                <div class="upload-controls"><select aria-label="Document type" [ngModel]="documentType()" (ngModelChange)="documentType.set($event)" name="documentType"><option value="user_manual">User manual</option><option value="warranty">Warranty</option><option value="specification">Specification</option><option value="troubleshooting">Troubleshooting</option><option value="other">Other</option></select><button class="button button-primary" type="submit" [disabled]="saving() || !selectedFile()">{{ saving() ? 'Processing…' : 'Upload and process' }} <span>→</span></button></div>
+              </form>
+              <div class="document-list-heading"><h3>Uploaded files</h3><span>{{ documents().length }} files</span></div>
+              @if (documents().length === 0) { <div class="empty-state compact"><strong>No documents uploaded</strong><p>Add a manual to make product-specific answers possible.</p></div> }
+              @for (document of documents(); track document.id) {
+                <div class="document-row"><span class="file-badge">{{ document.filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'TXT' }}</span><span class="document-copy"><strong>{{ document.filename }}</strong><small>{{ document.document_type.replace('_', ' ') }} · {{ document.chunk_count }} chunks</small></span><span class="status-pill" [class.status-failed]="document.status === 'failed'">{{ document.status }}</span><button class="delete-link" (click)="deleteDocument(document)">Remove</button></div>
+                @if (document.error_message) { <p class="document-error">{{ document.error_message }}</p> }
+              }
+            }
+          </section>
+        }
+
+        @if (view() === 'assistant') {
+          <section class="page-heading chat-heading"><div class="eyebrow"><span class="eyebrow-dot"></span> YOUR PRODUCT-SPECIFIC AI</div><h1>Ask with confidence.</h1><p>Answers are grounded in the documents you upload, with the sources right there.</p></section>
+          @if (products().length === 0) {
+            <section class="surface-card empty-state"><span class="empty-icon">✳</span><strong>Your assistant is ready to learn</strong><p>Register a product and upload its manual to start a cited conversation.</p><button class="button button-primary" (click)="open('products')">Add a product <span>→</span></button></section>
+          } @else {
+            <section class="chat-layout">
+              <div class="chat-product-bar"><div class="chat-product-select"><span class="product-symbol">{{ selectedProduct()?.category?.toLowerCase()?.includes('wash') ? '◉' : '▧' }}</span><div><small>ASK ABOUT</small><select aria-label="Select product" [ngModel]="selectedProductId()" (ngModelChange)="selectProduct($event)">@for (product of products(); track product.id) { <option [value]="product.id">{{ product.name }} · {{ product.brand }} {{ product.model }}</option> }</select></div></div><button class="text-button" (click)="newConversation()">New conversation <span>+</span></button></div>
+              <div class="chat-body">
+                @if (turns().length === 0) {
+                  <div class="chat-welcome"><span class="chat-welcome-mark">✳</span><h2>What would you like to know?</h2><p>Ask a question about your selected product. The assistant looks only in its uploaded documents.</p><div class="suggestion-row"><button (click)="question.set('What maintenance does the manual recommend?')">Maintenance tips <span>↗</span></button><button (click)="question.set('What does error code 4C mean?')">Understand an error <span>↗</span></button><button (click)="question.set('What does the warranty cover?')">Warranty details <span>↗</span></button></div></div>
+                }
+                @for (turn of turns(); track $index) {
+                  <div class="chat-turn" [class.user-turn]="turn.role === 'user'">                  <div class="turn-avatar" [class.assistant-avatar]="turn.role === 'assistant'">{{ turn.role === 'assistant' ? '✳' : 'M' }}</div><div class="turn-content"><span class="turn-label">{{ turn.role === 'assistant' ? 'PRODUCT ASSISTANT' : 'YOU' }}</span><p>{{ turn.content }}</p>@for (citation of turn.citations ?? []; track citation.document_id + citation.excerpt; let index = $index) { <details class="citation-card"><summary><span class="citation-mark">{{ index + 1 }}</span><span><strong>{{ citation.filename }}</strong><small>{{ citation.page_number ? 'Page ' + citation.page_number : 'Source excerpt' }}{{ citation.section ? ' · ' + citation.section : '' }}</small></span></summary><p>{{ citation.excerpt }}</p></details> }</div></div>
+                }
+                @if (saving()) { <div class="thinking"><span></span><span></span><span></span> Finding product sources…</div> }
+              </div>
+              <form class="chat-composer" (ngSubmit)="ask()"><textarea aria-label="Ask a product question" [ngModel]="question()" (ngModelChange)="question.set($event)" name="question" placeholder="Ask about care, specifications, errors, or warranty…" rows="1" (keydown.enter)="ask(); $event.preventDefault()"></textarea><div class="composer-foot"><span><span class="composer-lock">◇</span> Answers are based on uploaded product documents</span><button class="send-button" type="submit" [disabled]="saving() || !question().trim()" aria-label="Send question">↑</button></div></form>
+            </section>
+          }
+          <p class="safety-note">Always follow your manufacturer’s safety instructions. For electrical faults or repairs, contact authorized service.</p>
+        }
+      }
+    </div>
+  </main>
+</div>
