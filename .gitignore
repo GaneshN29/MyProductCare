@@ -9,6 +9,7 @@ frontend/dist/
 frontend/.angular/
 data/
 demo-output/
+frontend/scripts/record-demo.mjs
 *.py[cod]
 *.db
 *.sqlite3
