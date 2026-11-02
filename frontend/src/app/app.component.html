@@ -26,12 +26,11 @@
       <div class="privacy-card">
         <span class="privacy-icon">◇</span>
         <strong>Your docs stay yours</strong>
-        <p>Product data is isolated to the API token you provide.</p>
+        <p>Your product library is private to your account.</p>
       </div>
       <div class="profile-row">
-        <span class="profile-avatar">M</span>
-        <span class="profile-copy"><strong>My workspace</strong><small>Personal library</small></span>
-        <span class="profile-menu">···</span>
+        <span class="profile-avatar">{{ accountEmail() ? accountEmail().charAt(0).toUpperCase() : 'M' }}</span>
+        <span class="profile-copy"><strong>{{ accountEmail() || 'My workspace' }}</strong><small>Personal library</small></span>
       </div>
     </div>
   </aside>
@@ -41,7 +40,9 @@
       <div class="breadcrumb"><span>Workspace</span><span class="crumb-separator">/</span><strong>{{ view() === 'assistant' ? 'AI assistant' : view() === 'documents' ? 'Documents' : view() === 'products' ? 'My products' : 'Overview' }}</strong></div>
       <div class="topbar-actions">
         <span class="secure-indicator"><i></i> Private workspace</span>
-        <button class="avatar-button" aria-label="Workspace profile">M</button>
+        @if (isAuthenticated()) {
+          <button class="text-button" (click)="signOut()">Sign out <span>↗</span></button>
+        }
       </div>
     </header>
 
@@ -54,16 +55,21 @@
       }
 
       @if (connectionConfigured()) {
-        <section class="setup-card">
-          <div class="eyebrow"><span class="eyebrow-dot"></span> ONE-TIME SETUP</div>
-          <h1>Connect to your product library</h1>
-          <p>Connect your Angular app to the MyProductCare API. Your bearer token stays in this browser.</p>
-          <label for="api-url">API base URL</label>
-          <input id="api-url" [ngModel]="apiUrl()" (ngModelChange)="apiUrl.set($event)" placeholder="http://localhost:8000">
-          <label for="api-token">API bearer token</label>
-          <input id="api-token" type="password" [ngModel]="apiToken()" (ngModelChange)="apiToken.set($event)" placeholder="Paste your APP_API_TOKEN">
-          <button class="button button-primary full-button" (click)="saveConnection()">Connect workspace <span>→</span></button>
-          <small>Start the FastAPI backend and set APP_API_TOKEN before connecting.</small>
+        <section class="setup-card auth-card">
+          <div class="eyebrow"><span class="eyebrow-dot"></span> YOUR PRIVATE PRODUCT LIBRARY</div>
+          <h1>{{ authMode() === 'register' ? 'Create your account' : 'Welcome back' }}</h1>
+          <p>{{ authMode() === 'register' ? 'Create an account to keep your products, documents, and conversations private to you.' : 'Sign in to continue to your product library.' }}</p>
+          <form (ngSubmit)="authenticate()">
+            <label for="account-email">Email address</label>
+            <input id="account-email" type="email" autocomplete="email" [ngModel]="email()" (ngModelChange)="email.set($event)" name="email" required maxlength="320" placeholder="you@example.com">
+            <label for="account-password">Password</label>
+            <input id="account-password" type="password" [attr.autocomplete]="authMode() === 'register' ? 'new-password' : 'current-password'" [ngModel]="password()" (ngModelChange)="password.set($event)" name="password" required minlength="8" maxlength="128" placeholder="At least 8 characters">
+            <button class="button button-primary full-button" type="submit" [disabled]="saving()">{{ saving() ? 'Please wait…' : authMode() === 'register' ? 'Create account' : 'Sign in' }} <span>→</span></button>
+          </form>
+          <small>Passwords are stored as secure hashes. Gemini credentials remain on the backend and are never part of your account.</small>
+          <button class="auth-toggle" type="button" (click)="authMode.set(authMode() === 'register' ? 'login' : 'register')">
+            {{ authMode() === 'register' ? 'Already have an account? Sign in' : 'New to MyProductCare? Create an account' }}
+          </button>
         </section>
       } @else {
         @if (view() === 'overview') {
@@ -99,16 +105,32 @@
           </section>
 
           <section class="section-block">
-            <div class="section-heading"><div><h2>Your products</h2><p>A little more know-how for everything you own.</p></div><button class="text-button" (click)="open('products')">View all <span>→</span></button></div>
+            <div class="section-heading"><div><h2>All your products</h2><p>{{ products().length }} registered items, with purchase and warranty details.</p></div><button class="text-button" (click)="open('products')">Manage products <span>→</span></button></div>
+            @if (warrantyAttentionProducts().length > 0) {
+              <div class="warranty-alert-panel" role="status">
+                <span class="warranty-alert-icon">!</span>
+                <div class="warranty-alert-copy">
+                  <strong>Warranty dates to review</strong>
+                  @for (product of warrantyAttentionProducts(); track product.id) {
+                    <p>{{ product.name }} · {{ warrantyStatus(product).label }}</p>
+                  }
+                </div>
+                <button class="text-button" (click)="open('products')">Review products <span>→</span></button>
+              </div>
+            }
             @if (products().length === 0) {
               <div class="empty-card"><span class="empty-icon">▦</span><div><strong>Your product library starts here</strong><p>Add a product, then upload its manual or warranty document.</p></div><button class="button button-primary" (click)="open('products')">Add your first product <span>+</span></button></div>
             } @else {
               <div class="product-grid">
-                @for (product of products().slice(0, 3); track product.id) {
+                @for (product of products(); track product.id) {
                   <article class="product-card" (click)="selectProduct(product.id); open('documents')">
                     <div class="product-card-top"><span class="product-symbol">{{ product.category.toLowerCase().includes('wash') ? '◉' : '▧' }}</span><button class="more-button" (click)="deleteProduct(product); $event.stopPropagation()" aria-label="Delete product">···</button></div>
                     <h3>{{ product.name }}</h3><p class="product-subtitle">{{ product.brand }} <span>·</span> {{ product.model }}</p>
                     <div class="product-card-foot"><span>{{ product.category }}</span><span class="ready-dot"></span></div>
+                    <div class="product-detail-line"><span>Purchased</span><strong>{{ product.purchase_date ? formatWarrantyDate(product.purchase_date) : 'Not set' }}</strong></div>
+                    <div class="product-detail-line warranty-detail-line" [class.warranty-soon]="warrantyStatus(product).level === 'soon'" [class.warranty-expired]="warrantyStatus(product).level === 'expired'"><span>Warranty status</span><strong>{{ warrantyStatus(product).label }}</strong></div>
+                    <div class="product-detail-line"><span>Expiry date</span><strong>{{ product.warranty_expiry_date ? formatWarrantyDate(product.warranty_expiry_date) : 'Not set' }}</strong></div>
+                    @if (product.description) { <p class="product-description">{{ product.description }}</p> }
                   </article>
                 }
               </div>
@@ -126,7 +148,7 @@
               @for (product of products(); track product.id) {
                 <button class="product-list-row" [class.selected]="selectedProductId() === product.id" (click)="selectProduct(product.id)">
                   <span class="product-symbol">{{ product.category.toLowerCase().includes('wash') ? '◉' : '▧' }}</span>
-                  <span class="product-row-copy"><strong>{{ product.name }}</strong><small>{{ product.brand }} · {{ product.model }}</small></span>
+                  <span class="product-row-copy"><strong>{{ product.name }}</strong><small>{{ product.brand }} · {{ product.model }}</small><small class="warranty-inline" [class.warranty-text-soon]="warrantyStatus(product).level === 'soon'" [class.warranty-text-expired]="warrantyStatus(product).level === 'expired'">{{ warrantyStatus(product).label }}</small></span>
                   <span class="row-arrow">›</span>
                 </button>
               }
@@ -136,6 +158,7 @@
                 <label>Product name<input [ngModel]="productName()" (ngModelChange)="productName.set($event)" name="name" required placeholder="Washing machine"></label>
                 <div class="form-pair"><label>Brand<input [ngModel]="brand()" (ngModelChange)="brand.set($event)" name="brand" required placeholder="e.g. Bosch"></label><label>Model<input [ngModel]="model()" (ngModelChange)="model.set($event)" name="model" required placeholder="e.g. WGG244"></label></div>
                 <div class="form-pair"><label>Category<input [ngModel]="category()" (ngModelChange)="category.set($event)" name="category" required placeholder="Home appliance"></label><label>Purchase date <span class="optional">(optional)</span><input type="date" [ngModel]="purchaseDate()" (ngModelChange)="purchaseDate.set($event)" name="purchaseDate"></label></div>
+                <label>Warranty expiry date <span class="optional">(optional)</span><input type="date" [ngModel]="warrantyExpiryDate()" (ngModelChange)="warrantyExpiryDate.set($event)" name="warrantyExpiryDate"></label>
                 <label>Description <span class="optional">(optional)</span><textarea rows="3" [ngModel]="description()" (ngModelChange)="description.set($event)" name="description" placeholder="Anything you'd like to remember"></textarea></label>
                 <button class="button button-primary full-button" type="submit" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save product' }} <span>→</span></button>
               </form>
@@ -150,6 +173,20 @@
               <div class="empty-state"><span class="empty-icon">▤</span><strong>Register a product first</strong><p>Documents need to be attached to a product.</p><button class="button button-primary" (click)="open('products')">Add a product <span>→</span></button></div>
             } @else {
               <div class="document-toolbar"><div><h2>Documents</h2><p>Processing uses text extracted from your files.</p></div><select aria-label="Product" [ngModel]="selectedProductId()" (ngModelChange)="selectProduct($event)">@for (product of products(); track product.id) { <option [value]="product.id">{{ product.name }} · {{ product.model }}</option> }</select></div>
+              @if (selectedProduct(); as product) {
+                <section class="warranty-editor" aria-label="Warranty expiry date">
+                  <div class="warranty-editor-copy">
+                    <strong>Warranty expiry</strong>
+                    <p [class.warranty-text-soon]="warrantyStatus(product).level === 'soon'" [class.warranty-text-expired]="warrantyStatus(product).level === 'expired'">{{ warrantyStatus(product).label }}</p>
+                    <small>Save a confirmed date, or review a suggestion extracted from a warranty document.</small>
+                  </div>
+                  <div class="warranty-editor-controls">
+                    <label class="visually-hidden" for="warranty-expiry-date">Warranty expiry date</label>
+                    <input id="warranty-expiry-date" type="date" [ngModel]="warrantyExpiryDate()" (ngModelChange)="warrantyExpiryDate.set($event)" name="selectedWarrantyExpiry">
+                    <button class="button button-primary" type="button" (click)="saveWarrantyExpiry()" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save date' }}</button>
+                  </div>
+                </section>
+              }
               <form class="upload-panel" (ngSubmit)="uploadDocument()">
                 <div class="upload-icon">↑</div><strong>Add a product document</strong><p>PDF, TXT, or Markdown · up to 20 MB</p>
                 <label class="file-picker">Choose file<input type="file" accept=".pdf,.txt,.md,.markdown" (change)="onFileSelected($event)"></label>
@@ -159,7 +196,7 @@
               <div class="document-list-heading"><h3>Uploaded files</h3><span>{{ documents().length }} files</span></div>
               @if (documents().length === 0) { <div class="empty-state compact"><strong>No documents uploaded</strong><p>Add a manual to make product-specific answers possible.</p></div> }
               @for (document of documents(); track document.id) {
-                <div class="document-row"><span class="file-badge">{{ document.filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'TXT' }}</span><span class="document-copy"><strong>{{ document.filename }}</strong><small>{{ document.document_type.replace('_', ' ') }} · {{ document.chunk_count }} chunks</small></span><span class="status-pill" [class.status-failed]="document.status === 'failed'">{{ document.status }}</span><button class="delete-link" (click)="deleteDocument(document)">Remove</button></div>
+                <div class="document-row"><span class="file-badge">{{ document.filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'TXT' }}</span><span class="document-copy"><strong>{{ document.filename }}</strong><small>{{ document.document_type.replace('_', ' ') }} · {{ document.chunk_count }} chunks</small>@if (document.suggested_warranty_expiry) { <small class="warranty-suggestion">Possible expiry found: {{ document.suggested_warranty_expiry }} · review before saving</small><button class="warranty-review-button" type="button" (click)="useWarrantySuggestion(document)">Review this date</button> }</span><span class="status-pill" [class.status-failed]="document.status === 'failed'">{{ document.status }}</span><button class="delete-link" (click)="deleteDocument(document)">Remove</button></div>
                 @if (document.error_message) { <p class="document-error">{{ document.error_message }}</p> }
               }
             }
@@ -169,7 +206,7 @@
         @if (view() === 'assistant') {
           <section class="page-heading chat-heading"><div class="eyebrow"><span class="eyebrow-dot"></span> YOUR PRODUCT-SPECIFIC AI</div><h1>Ask with confidence.</h1><p>Answers are grounded in the documents you upload, with the sources right there.</p></section>
           @if (generationAvailable() === false) {
-            <div class="mode-notice"><span>✳</span><p><strong>Source-only mode.</strong> Add <code>OPENAI_API_KEY</code> to the backend’s local <code>.env</code> and restart it to enable generated summaries. Retrieval and citations still work.</p></div>
+            <div class="mode-notice"><span>✳</span><p><strong>Source-only mode.</strong> Add <code>{{ generationProvider().toUpperCase() }}_API_KEY</code> to the backend’s local <code>.env</code> and restart it to enable generated summaries. Retrieval and citations still work.</p></div>
           }
           @if (products().length === 0) {
             <section class="surface-card empty-state"><span class="empty-icon">✳</span><strong>Your assistant is ready to learn</strong><p>Register a product and upload its manual to start a cited conversation.</p><button class="button button-primary" (click)="open('products')">Add a product <span>→</span></button></section>

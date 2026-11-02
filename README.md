@@ -12,6 +12,7 @@ MyProductCare is a product-document assistant. Register a product, upload its ma
 
 - FastAPI backend and Angular frontend.
 - Product CRUD and per-token user isolation.
+- Warranty expiry dates with upcoming/expired status and user-confirmed date suggestions from warranty documents.
 - PDF (text PDFs), TXT, and Markdown ingestion with page metadata.
 - BGE-small embeddings stored in local persistent Qdrant.
 - BM25 keyword search + vector search combined with reciprocal rank fusion.
@@ -28,7 +29,7 @@ The sample washer manual is fictional and provided only to try the local flow. I
 - Python 3.11+
 - Node.js 22+
 - Internet access on first ingestion/chat to download the BGE embedding and reranker models (unless cached)
-- An OpenAI API key for generated answers. Without one, the app clearly returns relevant source excerpts instead.
+- A Google Gemini or OpenAI API key for generated answers. Gemini may offer a free API tier subject to current model, account, regional, and rate limits. Without a configured provider key, the app returns relevant source excerpts instead.
 
 ## Run locally (Windows PowerShell)
 
@@ -41,13 +42,16 @@ npm ci
 cd ..
 ```
 
-Create a local token (also used by the demo recorder). Add your OpenAI key to `.env` if you want generated summaries; without it, retrieval and citations still work:
+For Gemini, create an API key in [Google AI Studio](https://aistudio.google.com/apikey), then add it to your local `.env`. If there is no OpenAI key and no explicit `LLM_PROVIDER`, the backend automatically selects Gemini:
 
 ```powershell
-$env:APP_API_TOKEN = [guid]::NewGuid().ToString() + [guid]::NewGuid().ToString()
-"APP_API_TOKEN=$env:APP_API_TOKEN" | Set-Content .env
-Add-Content .env 'OPENAI_API_KEY=your-key'
+Copy-Item .env.example .env
+# Edit .env and set GEMINI_API_KEY to your private key.
 ```
+
+Users create an account with an email and password in the app. Passwords are stored as Argon2 hashes; the backend issues revocable bearer sessions that expire after 30 days. Gemini/OpenAI credentials stay in the backend `.env` and are never entered as a user password. Keep `.env` private, never commit it, and restart FastAPI after changing provider settings.
+
+On an existing local installation, the first account can keep access to the prior library if the old `APP_API_TOKEN` is still present in `.env` during that first registration. After confirming the account can see its products, the obsolete `APP_API_TOKEN` line can be removed. Later accounts receive separate product/document/conversation ownership.
 
 Start the backend in one terminal and the Angular app in another:
 
@@ -60,15 +64,15 @@ cd frontend
 npm start
 ```
 
-Open `http://localhost:4200` and paste the same `APP_API_TOKEN` into the connection screen. Data is stored locally under `data\`; do not commit it.
+Open `http://localhost:4200` and create an account or sign in. Data is stored locally under `data\`; do not commit it.
 
-The assistant reports **source-only mode** when the backend has no `OPENAI_API_KEY`. In that mode it can retrieve matching passages and show citations but does not generate an AI summary. Put a valid key in the root `.env` and restart FastAPI to enable summaries. Do not commit or share the key.
+The assistant reports **source-only mode** when the selected answer-generation provider has no API key. In that mode it can retrieve matching passages and show citations but does not generate an AI summary. Put a valid provider key in the root `.env` and restart FastAPI to enable summaries. Do not commit or share the key.
 
 To record a real browser walkthrough after starting both apps, run `npm run test:demo` from `frontend\`. The script requires Microsoft Edge and uses the running API to register the fictional sample washer, upload its sample text manual, and ask a cited question. It writes the video under the ignored `demo-output\` directory and a preview to `docs\demo-screenshot.png`. The sample manual is not advice for a real appliance.
 
 ## Docker
 
-Set `APP_API_TOKEN` and optionally `OPENAI_API_KEY` in your environment, then run:
+Set an answer-generation provider key (for example `GEMINI_API_KEY`) in your environment, then run:
 
 ```powershell
 docker compose up --build
@@ -78,10 +82,14 @@ Open the frontend at `http://localhost:4200`.
 
 ## API overview
 
-All routes other than `/api/health` require `Authorization: Bearer <APP_API_TOKEN>`.
+Registration, login, and health are public. Other data routes require the bearer session returned by login.
 
 | Method | Route | Purpose |
 |---|---|---|
+| POST | `/api/auth/register` | Create an account and start a session |
+| POST | `/api/auth/login` | Sign in and start a session |
+| GET | `/api/auth/me` | Read the signed-in account |
+| POST | `/api/auth/logout` | Revoke the current session |
 | POST / GET | `/api/products` | Create/list products |
 | GET / PUT / DELETE | `/api/products/{id}` | View/update/delete an owned product |
 | POST / GET | `/api/products/{id}/documents` | Upload/list product documents |
@@ -98,12 +106,13 @@ Interactive OpenAPI documentation is available at `/docs`.
 python -m pytest backend\tests -q
 ```
 
-Tests cover text cleanup, page-aware chunking, query classification, and reciprocal-rank fusion. Retrieval-quality evaluation on real manufacturer manuals and a 50-question ground-truth set is not included yet; no performance results are claimed.
+Tests cover account registration/login/logout, per-account product isolation, legacy library ownership, warranty tracking, text cleanup, page-aware chunking, query classification, and reciprocal-rank fusion. Retrieval-quality evaluation on real manufacturer manuals and a 50-question ground-truth set is not included yet; no performance results are claimed.
 
 ## Current scope and limitations
 
-- Authentication is a single shared bearer token per local deployment; it provides separate data ownership by token but is not a multi-account registration/login system.
+- Email verification and automated login rate limiting are not included. Use HTTPS and an edge/server rate limit before exposing the API beyond a trusted local network.
 - Warranty assessment is not implemented; the assistant only answers from uploaded evidence.
+- Warranty expiry suggestions are based on simple text patterns, not authoritative interpretation; users must review and save a date. The app does not send background or email notifications.
 - The evaluation harness, real-manual benchmark corpus, and measured baseline-vs-advanced results remain future work.
 - Scanned/image-only PDFs need OCR, which is not included.
 - Recent conversation turns are passed to answer generation and recent user questions are included when retrieving context for follow-up questions.

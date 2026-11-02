@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
@@ -21,11 +21,35 @@ class Product(Base):
     model: Mapped[str] = mapped_column(String(120))
     category: Mapped[str] = mapped_column(String(120))
     purchase_date: Mapped[datetime | None] = mapped_column(Date, nullable=True)
+    warranty_expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     documents: Mapped[list["Document"]] = relationship(
         back_populates="product", cascade="all, delete-orphan"
     )
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid4()))
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    sessions: Mapped[list["AuthSession"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    user: Mapped[User] = relationship(back_populates="sessions")
 
 
 class Document(Base):
@@ -38,6 +62,7 @@ class Document(Base):
     document_type: Mapped[str] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(24), default="processing")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suggested_warranty_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     product: Mapped[Product] = relationship(back_populates="documents")
     chunks: Mapped[list["Chunk"]] = relationship(

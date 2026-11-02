@@ -5,12 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import models
 from .api import router
-from .database import Base, engine
+from .database import Base, engine, ensure_schema_compatibility
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_schema_compatibility()
     yield
 
 

@@ -1,19 +1,20 @@
-import hashlib
 import json
+import logging
 import os
-import secrets
-from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from openai import APIError as OpenAIAPIError
+from openai import RateLimitError as OpenAIRateLimitError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .config import MAX_UPLOAD_BYTES
+from .config import LLM_PROVIDER, MAX_UPLOAD_BYTES
 from .database import get_db
-from .models import Chunk, Conversation, Document, Message, Product
+from .models import Chunk, Conversation, Document, Message, Product, User
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -22,27 +23,111 @@ from .schemas import (
     MessageOut,
     ProductCreate,
     ProductOut,
+    SessionOut,
+    UserCredentials,
+    UserOut,
+)
+from .services.auth import (
+    DUMMY_PASSWORD_HASH,
+    authenticate_session,
+    create_session,
+    hash_token,
+    password_hash,
+    revoke_session,
 )
 from .services.ai_services import embed_texts
 from .services.document_processor import chunk_pages, extract_pages
 from .services.rag import INSUFFICIENT_MESSAGE, answer_question
 from .services.retrieval import classify_query, retrieve
 from .services.vector_store import delete_document, delete_product, upsert_chunks
+from .services.warranty import suggest_warranty_expiry
 
 router = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
 bearer = HTTPBearer(auto_error=False)
 ALLOWED_EXTENSIONS = {"pdf", "txt", "md", "markdown"}
 
 
 def current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: Session = Depends(get_db),
 ) -> str:
-    expected = os.getenv("APP_API_TOKEN", "").strip()
-    if not expected:
-        raise HTTPException(503, "Set APP_API_TOKEN before using protected endpoints.")
-    if credentials is None or not secrets.compare_digest(credentials.credentials, expected):
-        raise HTTPException(401, "A valid bearer token is required.")
-    return hashlib.sha256(expected.encode("utf-8")).hexdigest()
+    if credentials is None:
+        raise HTTPException(401, "Sign in to access your product library.")
+    user = authenticate_session(db, credentials.credentials)
+    if user is None:
+        raise HTTPException(401, "Your session is invalid or expired. Please sign in again.")
+    return user.id
+
+
+@router.post("/auth/register", response_model=SessionOut, status_code=201)
+def register(payload: UserCredentials, db: Session = Depends(get_db)) -> SessionOut:
+    if db.scalar(select(User.id).where(User.email == payload.email)):
+        raise HTTPException(409, "An account with this email already exists.")
+
+    user_id = str(uuid4())
+    has_users = db.scalar(select(User.id).limit(1)) is not None
+    legacy_token = os.getenv("APP_API_TOKEN", "").strip()
+    if not has_users and legacy_token:
+        legacy_user_id = hash_token(legacy_token)
+        if db.scalar(select(Product.id).where(Product.user_id == legacy_user_id).limit(1)):
+            user_id = legacy_user_id
+
+    user = User(
+        id=user_id,
+        email=payload.email,
+        password_hash=password_hash.hash(payload.password),
+    )
+    db.add(user)
+    token = create_session(db, user)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "An account with this email already exists.") from exc
+    db.refresh(user)
+    return SessionOut(
+        access_token=token,
+        user=UserOut(id=user.id, email=user.email, created_at=user.created_at),
+    )
+
+
+@router.post("/auth/login", response_model=SessionOut)
+def login(payload: UserCredentials, db: Session = Depends(get_db)) -> SessionOut:
+    user = db.scalar(select(User).where(User.email == payload.email))
+    password_matches = password_hash.verify(
+        payload.password, user.password_hash if user else DUMMY_PASSWORD_HASH
+    )
+    if user is None or not password_matches:
+        raise HTTPException(401, "Email or password is incorrect.")
+    token = create_session(db, user)
+    db.commit()
+    db.refresh(user)
+    return SessionOut(
+        access_token=token,
+        user=UserOut(id=user.id, email=user.email, created_at=user.created_at),
+    )
+
+
+@router.get("/auth/me", response_model=UserOut)
+def get_current_account(
+    db: Session = Depends(get_db), user_id: str = Depends(current_user)
+) -> User:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(401, "Your account could not be found. Please sign in again.")
+    return user
+
+
+@router.post("/auth/logout", status_code=204)
+def logout(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: Session = Depends(get_db),
+    _user_id: str = Depends(current_user),
+) -> None:
+    if credentials is not None:
+        revoke_session(db, credentials.credentials)
+        db.commit()
 
 
 def owned_product(db: Session, product_id: str, user_id: str) -> Product:
@@ -62,6 +147,7 @@ def document_output(document: Document) -> DocumentOut:
         document_type=document.document_type,
         status=document.status,
         error_message=document.error_message,
+        suggested_warranty_expiry=document.suggested_warranty_expiry,
         chunk_count=len(document.chunks),
         created_at=document.created_at,
     )
@@ -69,9 +155,16 @@ def document_output(document: Document) -> DocumentOut:
 
 @router.get("/health")
 def health() -> dict[str, str | bool]:
+    provider = os.getenv("LLM_PROVIDER", LLM_PROVIDER).strip().lower()
+    api_key_name = {"openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY"}.get(
+        provider
+    )
     return {
         "status": "ok",
-        "generation_available": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+        "llm_provider": provider,
+        "generation_available": bool(
+            api_key_name and os.getenv(api_key_name, "").strip()
+        ),
     }
 
 
@@ -129,7 +222,7 @@ def remove_product(
 async def upload_document(
     product_id: str,
     file: UploadFile = File(...),
-    document_type: str = "user_manual",
+    document_type: str = Form(default="user_manual"),
     db: Session = Depends(get_db),
     user_id: str = Depends(current_user),
 ) -> DocumentOut:
@@ -158,6 +251,10 @@ async def upload_document(
     db.commit()
     try:
         pages = extract_pages(filename, content)
+        if document_type == "warranty":
+            document.suggested_warranty_expiry = suggest_warranty_expiry(
+                "\n".join(page.text for page in pages), product.purchase_date
+            )
         chunks = chunk_pages(pages)
         if not chunks:
             raise ValueError("No text chunks could be created from the document.")
@@ -255,7 +352,13 @@ def chat(
         db.flush()
 
     query_type = classify_query(payload.question)
-    if query_type == "unsupported":
+    if query_type == "greeting":
+        answer = (
+            "Hi! I'm your product assistant. Ask me about this product's "
+            "specifications, troubleshooting, maintenance, or warranty."
+        )
+        citations, insufficient = [], False
+    elif query_type == "unsupported":
         answer, citations, insufficient = INSUFFICIENT_MESSAGE, [], True
     else:
         try:
@@ -278,6 +381,21 @@ def chat(
         except (OSError, RuntimeError, ValueError) as exc:
             db.rollback()
             raise HTTPException(503, f"Retrieval or answer generation failed: {exc}") from exc
+        except OpenAIRateLimitError as exc:
+            db.rollback()
+            logger.warning("OpenAI rejected answer generation because of rate limits or account quota.")
+            raise HTTPException(
+                503,
+                "OpenAI cannot generate an answer because the API rate limit or account credits "
+                "are exhausted. Check your OpenAI API billing and usage limits.",
+            ) from exc
+        except OpenAIAPIError as exc:
+            db.rollback()
+            logger.exception("OpenAI answer generation failed.")
+            raise HTTPException(
+                503,
+                "The OpenAI API request failed. Check your API key, account billing, and model access.",
+            ) from exc
 
     db.add(Message(conversation_id=conversation.id, role="user", content=payload.question))
     db.add(

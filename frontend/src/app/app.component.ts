@@ -11,6 +11,12 @@ import {
 } from './api.service';
 
 type View = 'overview' | 'products' | 'documents' | 'assistant';
+type WarrantyLevel = 'expired' | 'soon' | 'active' | 'unknown';
+
+interface WarrantyStatus {
+  label: string;
+  level: WarrantyLevel;
+}
 
 @Component({
   selector: 'mpc-root',
@@ -28,13 +34,17 @@ export class AppComponent implements OnInit {
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly error = signal('');
-  readonly apiToken = signal(this.api.token());
-  readonly apiUrl = signal(localStorage.getItem('myproductcare.apiUrl') ?? 'http://localhost:8000');
+  readonly authMode = signal<'register' | 'login'>('register');
+  readonly email = signal('');
+  readonly password = signal('');
+  readonly accountEmail = signal('');
+  readonly isAuthenticated = signal(false);
   readonly productName = signal('');
   readonly brand = signal('');
   readonly model = signal('');
   readonly category = signal('');
   readonly purchaseDate = signal('');
+  readonly warrantyExpiryDate = signal('');
   readonly description = signal('');
   readonly question = signal('');
   readonly conversationId = signal<string | null>(null);
@@ -42,13 +52,30 @@ export class AppComponent implements OnInit {
   readonly selectedFile = signal<File | null>(null);
   readonly connectionConfigured = signal(false);
   readonly generationAvailable = signal<boolean | null>(null);
+  readonly generationProvider = signal('openai');
 
   ngOnInit(): void {
     if (this.api.token()) {
-      void this.loadHealth();
-      void this.loadProducts();
+      void this.restoreSession();
     } else {
       this.connectionConfigured.set(true);
+    }
+  }
+
+  async restoreSession(): Promise<void> {
+    try {
+      const user = await this.api.currentUser();
+      this.accountEmail.set(user.email);
+      this.isAuthenticated.set(true);
+      this.connectionConfigured.set(false);
+      await Promise.all([this.loadHealth(), this.loadProducts()]);
+    } catch (error: unknown) {
+      this.api.clearSession();
+      this.isAuthenticated.set(false);
+      this.connectionConfigured.set(true);
+      if (!(error instanceof Error && error.message.includes('API 401:'))) {
+        this.showError(error);
+      }
     }
   }
 
@@ -56,17 +83,49 @@ export class AppComponent implements OnInit {
     try {
       const health = await this.api.health();
       this.generationAvailable.set(health.generation_available);
+      this.generationProvider.set(health.llm_provider);
     } catch (error: unknown) {
       this.showError(error);
     }
   }
 
-  async saveConnection(): Promise<void> {
+  async authenticate(): Promise<void> {
     this.error.set('');
+    this.saving.set(true);
     try {
-      this.api.saveCredentials(this.apiUrl(), this.apiToken());
+      const response =
+        this.authMode() === 'register'
+          ? await this.api.register(this.email(), this.password())
+          : await this.api.login(this.email(), this.password());
+      this.api.saveSession(response.access_token);
+      this.accountEmail.set(response.user.email);
+      this.isAuthenticated.set(true);
+      this.password.set('');
+      this.connectionConfigured.set(false);
+      await Promise.all([this.loadHealth(), this.loadProducts()]);
     } catch (error: unknown) {
       this.showError(error);
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  async signOut(): Promise<void> {
+    this.error.set('');
+    try {
+      await this.api.logout();
+    } catch (error: unknown) {
+      this.showError(error);
+    } finally {
+      this.api.clearSession();
+      this.isAuthenticated.set(false);
+      this.accountEmail.set('');
+      this.products.set([]);
+      this.documents.set([]);
+      this.turns.set([]);
+      this.selectedProductId.set('');
+      this.conversationId.set(null);
+      this.connectionConfigured.set(true);
     }
   }
 
@@ -96,6 +155,7 @@ export class AppComponent implements OnInit {
       model: this.model().trim(),
       category: this.category().trim(),
       purchase_date: this.purchaseDate() || null,
+      warranty_expiry_date: this.warrantyExpiryDate() || null,
       description: this.description().trim() || null,
     };
     if (!payload.name || !payload.brand || !payload.model || !payload.category) {
@@ -139,6 +199,9 @@ export class AppComponent implements OnInit {
   selectProduct(productId: string): void {
     const changed = productId !== this.selectedProductId();
     this.selectedProductId.set(productId);
+    this.warrantyExpiryDate.set(
+      this.products().find((product) => product.id === productId)?.warranty_expiry_date ?? '',
+    );
     if (changed) {
       this.turns.set([]);
       this.conversationId.set(null);
@@ -148,6 +211,76 @@ export class AppComponent implements OnInit {
 
   selectedProduct(): Product | undefined {
     return this.products().find((product) => product.id === this.selectedProductId());
+  }
+
+  warrantyStatus(product: Product): WarrantyStatus {
+    if (!product.warranty_expiry_date) {
+      return { label: 'Expiry date not set', level: 'unknown' };
+    }
+    const [year, month, day] = product.warranty_expiry_date.split('-').map(Number);
+    const expiry = Date.UTC(year, month - 1, day);
+    const todayDate = new Date();
+    const today = Date.UTC(
+      todayDate.getFullYear(),
+      todayDate.getMonth(),
+      todayDate.getDate(),
+    );
+    const daysRemaining = Math.round((expiry - today) / 86_400_000);
+    if (daysRemaining < 0) {
+      return {
+        label: `Expired ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? '' : 's'} ago`,
+        level: 'expired',
+      };
+    }
+    if (daysRemaining === 0) {
+      return { label: 'Expires today', level: 'soon' };
+    }
+    if (daysRemaining <= 30) {
+      return { label: `Expires in ${daysRemaining} days`, level: 'soon' };
+    }
+    return { label: `Expires ${this.formatWarrantyDate(product.warranty_expiry_date)}`, level: 'active' };
+  }
+
+  warrantyAttentionProducts(): Product[] {
+    return this.products().filter((product) => {
+      const level = this.warrantyStatus(product).level;
+      return level === 'expired' || level === 'soon';
+    });
+  }
+
+  useWarrantySuggestion(document: DocumentItem): void {
+    if (document.suggested_warranty_expiry) {
+      this.warrantyExpiryDate.set(document.suggested_warranty_expiry);
+    }
+  }
+
+  async saveWarrantyExpiry(): Promise<void> {
+    const product = this.selectedProduct();
+    if (!product) {
+      return;
+    }
+    const payload: ProductInput = {
+      name: product.name,
+      brand: product.brand,
+      model: product.model,
+      category: product.category,
+      purchase_date: product.purchase_date,
+      warranty_expiry_date: this.warrantyExpiryDate() || null,
+      description: product.description,
+    };
+    this.saving.set(true);
+    this.error.set('');
+    try {
+      const updated = await this.api.updateProduct(product.id, payload);
+      this.products.update((products) =>
+        products.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      this.warrantyExpiryDate.set(updated.warranty_expiry_date ?? '');
+    } catch (error: unknown) {
+      this.showError(error);
+    } finally {
+      this.saving.set(false);
+    }
   }
 
   async loadDocuments(): Promise<void> {
@@ -244,7 +377,13 @@ export class AppComponent implements OnInit {
     this.model.set('');
     this.category.set('');
     this.purchaseDate.set('');
+    this.warrantyExpiryDate.set('');
     this.description.set('');
+  }
+
+  formatWarrantyDate(value: string): string {
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString();
   }
 
   private showError(error: unknown): void {

@@ -9,6 +9,7 @@ export interface Product {
   model: string;
   category: string;
   purchase_date: string | null;
+  warranty_expiry_date: string | null;
   description: string | null;
   created_at: string;
 }
@@ -19,6 +20,7 @@ export interface ProductInput {
   model: string;
   category: string;
   purchase_date: string | null;
+  warranty_expiry_date: string | null;
   description: string | null;
 }
 
@@ -29,6 +31,7 @@ export interface DocumentItem {
   document_type: string;
   status: string;
   error_message: string | null;
+  suggested_warranty_expiry: string | null;
   chunk_count: number;
   created_at: string;
 }
@@ -57,26 +60,54 @@ export interface ChatResult {
 
 export interface ApiHealth {
   status: string;
+  llm_provider: string;
   generation_available: boolean;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  created_at: string;
+}
+
+interface AuthResponse {
+  access_token: string;
+  token_type: 'bearer';
+  user: AuthUser;
 }
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  private readonly baseUrl =
-    localStorage.getItem('myproductcare.apiUrl') ?? 'http://localhost:8000';
-  readonly token = signal(localStorage.getItem('myproductcare.token') ?? '');
+  readonly baseUrl = signal(
+    localStorage.getItem('myproductcare.apiUrl') ?? 'http://localhost:8000',
+  );
+  readonly token = signal(
+    localStorage.getItem('myproductcare.session') ??
+      localStorage.getItem('myproductcare.token') ??
+      '',
+  );
 
   constructor(private readonly http: HttpClient) {}
 
-  saveCredentials(apiUrl: string, token: string): void {
+  setApiUrl(apiUrl: string): void {
     const normalized = apiUrl.trim().replace(/\/+$/, '');
     if (!/^https?:\/\/.+/.test(normalized)) {
       throw new Error('Enter a complete API URL beginning with http:// or https://.');
     }
-    this.token.set(token.trim());
+    this.baseUrl.set(normalized);
     localStorage.setItem('myproductcare.apiUrl', normalized);
-    localStorage.setItem('myproductcare.token', token.trim());
-    window.location.reload();
+  }
+
+  saveSession(token: string): void {
+    this.token.set(token);
+    localStorage.setItem('myproductcare.session', token);
+    localStorage.removeItem('myproductcare.token');
+  }
+
+  clearSession(): void {
+    this.token.set('');
+    localStorage.removeItem('myproductcare.session');
+    localStorage.removeItem('myproductcare.token');
   }
 
   private headers(): HttpHeaders {
@@ -92,7 +123,7 @@ export class ApiService {
   ): Promise<T> {
     try {
       return await firstValueFrom(
-        this.http.request<T>(method, `${this.baseUrl}${path}`, {
+        this.http.request<T>(method, `${this.baseUrl()}${path}`, {
           body,
           headers,
         }),
@@ -117,8 +148,38 @@ export class ApiService {
     return this.send<ApiHealth>('GET', '/api/health');
   }
 
+  register(email: string, password: string): Promise<AuthResponse> {
+    return this.send<AuthResponse>(
+      'POST',
+      '/api/auth/register',
+      { email, password },
+      new HttpHeaders(),
+    );
+  }
+
+  login(email: string, password: string): Promise<AuthResponse> {
+    return this.send<AuthResponse>(
+      'POST',
+      '/api/auth/login',
+      { email, password },
+      new HttpHeaders(),
+    );
+  }
+
+  currentUser(): Promise<AuthUser> {
+    return this.send<AuthUser>('GET', '/api/auth/me');
+  }
+
+  logout(): Promise<void> {
+    return this.send<void>('POST', '/api/auth/logout');
+  }
+
   createProduct(payload: ProductInput): Promise<Product> {
     return this.send<Product>('POST', '/api/products', payload);
+  }
+
+  updateProduct(id: string, payload: ProductInput): Promise<Product> {
+    return this.send<Product>('PUT', `/api/products/${encodeURIComponent(id)}`, payload);
   }
 
   deleteProduct(id: string): Promise<void> {

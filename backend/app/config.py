@@ -12,7 +12,15 @@ QDRANT_PATH = Path(os.getenv("QDRANT_PATH", DATA_DIR / "qdrant")).resolve()
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "product_document_chunks")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-base")
+LLM_PROVIDER = os.getenv(
+    "LLM_PROVIDER",
+    "gemini"
+    if os.getenv("GEMINI_API_KEY", "").strip()
+    and not os.getenv("OPENAI_API_KEY", "").strip()
+    else "openai",
+).strip().lower()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "160"))

@@ -13,6 +13,8 @@ from .vector_store import search
 
 def classify_query(question: str) -> str:
     text = question.lower()
+    if re.fullmatch(r"\s*(hi|hello|hey|good morning|good afternoon|good evening)[!.?,\s]*", text):
+        return "greeting"
     if any(term in text for term in ("weather", "stock price", "news today", "sports score")):
         return "unsupported"
     if any(term in text for term in ("warranty", "covered", "coverage", "claim", "guarantee")):
