@@ -55,6 +55,11 @@ export interface ChatResult {
   insufficient_evidence: boolean;
 }
 
+export interface ApiHealth {
+  status: string;
+  generation_available: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly baseUrl =
@@ -106,6 +111,10 @@ export class ApiService {
 
   listProducts(): Promise<Product[]> {
     return this.send<Product[]>('GET', '/api/products');
+  }
+
+  health(): Promise<ApiHealth> {
+    return this.send<ApiHealth>('GET', '/api/health');
   }
 
   createProduct(payload: ProductInput): Promise<Product> {

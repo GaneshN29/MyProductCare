@@ -168,6 +168,9 @@
 
         @if (view() === 'assistant') {
           <section class="page-heading chat-heading"><div class="eyebrow"><span class="eyebrow-dot"></span> YOUR PRODUCT-SPECIFIC AI</div><h1>Ask with confidence.</h1><p>Answers are grounded in the documents you upload, with the sources right there.</p></section>
+          @if (generationAvailable() === false) {
+            <div class="mode-notice"><span>✳</span><p><strong>Source-only mode.</strong> Add <code>OPENAI_API_KEY</code> to the backend’s local <code>.env</code> and restart it to enable generated summaries. Retrieval and citations still work.</p></div>
+          }
           @if (products().length === 0) {
             <section class="surface-card empty-state"><span class="empty-icon">✳</span><strong>Your assistant is ready to learn</strong><p>Register a product and upload its manual to start a cited conversation.</p><button class="button button-primary" (click)="open('products')">Add a product <span>→</span></button></section>
           } @else {

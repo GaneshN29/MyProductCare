@@ -41,12 +41,23 @@ export class AppComponent implements OnInit {
   readonly documentType = signal('user_manual');
   readonly selectedFile = signal<File | null>(null);
   readonly connectionConfigured = signal(false);
+  readonly generationAvailable = signal<boolean | null>(null);
 
   ngOnInit(): void {
     if (this.api.token()) {
+      void this.loadHealth();
       void this.loadProducts();
     } else {
       this.connectionConfigured.set(true);
+    }
+  }
+
+  async loadHealth(): Promise<void> {
+    try {
+      const health = await this.api.health();
+      this.generationAvailable.set(health.generation_available);
+    } catch (error: unknown) {
+      this.showError(error);
     }
   }
 
