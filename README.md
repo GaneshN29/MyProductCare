@@ -4,9 +4,9 @@ MyProductCare is a product-document assistant. Register a product, upload its ma
 
 ## Demo
 
-![MyProductCare assistant with a source-backed answer](docs/demo-screenshot.png)
+![MyProductCare dashboard with a washer warranty expiring soon](docs/product-warranty-demo-dashboard.png)
 
-[Watch the browser demo (WebM)](https://github.com/GaneshN29/MyProductCare/releases/latest/download/myproductcare-demo.webm). The walkthrough uses the clearly labeled fictional sample manual.
+[Watch the full product-warranty demo on Google Drive](https://drive.google.com/file/d/1wcLFDY1zZd1e-GFpDIX4mcVVMkUnLVU6/view?usp=sharing). The locally recorded walkthrough is also saved as `demo-output\myproductcare-product-warranty-demo.webm`; generated video files are intentionally ignored by Git.
 
 ## What works
 
@@ -22,7 +22,7 @@ MyProductCare is a product-document assistant. Register a product, upload its ma
 - Document/product deletion also removes associated vectors.
 - API docs at `http://127.0.0.1:8000/docs`.
 
-The sample washer manual is fictional and provided only to try the local flow. It is not manufacturer guidance. Add a real product manual and its warranty conditions before relying on answers about a real appliance. This MVP does not approve warranty claims or replace professional service.
+The sample washer manual (`sample_data\northstar_home_wf820_washer_manual.txt`) and warranty fixture are fictional and provided only to demonstrate the local flow. They are not manufacturer guidance. Add a real product manual and its warranty conditions before relying on answers about a real appliance. This MVP does not approve warranty claims or replace professional service.
 
 ## Requirements
 
@@ -68,7 +68,15 @@ Open `http://localhost:4200` and create an account or sign in. Data is stored lo
 
 The assistant reports **source-only mode** when the selected answer-generation provider has no API key. In that mode it can retrieve matching passages and show citations but does not generate an AI summary. Put a valid provider key in the root `.env` and restart FastAPI to enable summaries. Do not commit or share the key.
 
-To record a real browser walkthrough after starting both apps, run `npm run test:demo` from `frontend\`. The script requires Microsoft Edge and uses the running API to register the fictional sample washer, upload its sample text manual, and ask a cited question. It writes the video under the ignored `demo-output\` directory and a preview to `docs\demo-screenshot.png`. The sample manual is not advice for a real appliance.
+To record a local browser walkthrough after starting both apps, run `npm run record:demo` from `frontend\`. The script requires Microsoft Edge and uses a throwaway account with fictional sample data:
+
+- A Northstar Home WF-820 front-load washer, purchased about 11 months ago, with a sample one-year warranty expiring in 21 days.
+- A Harbor & Pine bottom-freezer refrigerator with a two-year sample warranty.
+- A Clearpath Living cordless vacuum with a one-year sample warranty.
+
+The walkthrough reviews the full product dashboard and uses the app's actual **Choose file** control to upload local files from `sample_data\`: the fictional washer manual and a generated sample warranty. It does not draw a fake file dialog. Playwright selects those files from disk through the browser's file input; because the video records the browser page, it cannot show the Windows file-picker window. In normal interactive use, **Choose file** opens the standard Windows file picker. The date selection is shown separately as a recording-only in-page preview because the native date picker is also outside the browser recording. The dates are saved to the product normally. The walkthrough then asks practical questions about a 4C water-fill error and safe detergent-drawer care before returning to the dashboard. The questions are intended to show source-grounded answers and citations, not to give guidance for a real appliance. All sample brands, models, serial/receipt references, coverage terms, and dates are invented.
+
+The generated video stays in the ignored `demo-output\` folder as `myproductcare-product-warranty-demo.webm`. A dashboard preview is saved as `docs\product-warranty-demo-dashboard.png`. The recorder script and generated videos are intentionally kept local; neither is included in Git.
 
 ## Docker
 
